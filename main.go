@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/lib/pq"
 	_ "github.com/lib/pq"
@@ -69,6 +70,17 @@ func main() {
     }
 
 	r := gin.Default()
+
+    corsConfig := cors.Config{
+		AllowOrigins:     []string{"http://localhost:8080"}, // Replace with your Vue app's origin
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
+	}
+
+	// Apply CORS middleware
+	r.Use(cors.New(corsConfig))
 
 	r.GET("/workprojects", GetWorkProjects)
     r.GET("/workprojects/detail/", GetProjectsDetail)
