@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/lib/pq"
 	_ "github.com/lib/pq"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -31,6 +32,7 @@ type ProjectPayload struct {
     ProjectName        string               `json:"project_name"`
     ProjectBasePicture string               `json:"project_base_picture"`
     ProjectDescription string               `json:"project_description"`
+    TechStacks         []string             `json:"tech_stacks"`
     ProjectDetailed    []ProjectDetailPayload `json:"project_detailed"`
 }
 
@@ -44,6 +46,7 @@ type ProjectList struct {
     ProjectName         string           `json:"project_name"`
     ProjectBasePicture  []byte           `json:"project_base_picture"`
     ProjectDescription  string           `json:"project_description"`
+    TechStacks          []string         `json:"tech_stacks"`
     ProjectDetailed     []ProjectDetail  `json:"project_detailed"`
 }
 
@@ -169,6 +172,8 @@ func PostProjectDetail(c *gin.Context) {
         return
     }
 
+    log.Println(pq.Array(projectPayload.TechStacks))
+
     // Decode Base64 image for project_base_picture
     basePictureData, err := base64.StdEncoding.DecodeString(projectPayload.ProjectBasePicture)
     if err != nil {
@@ -179,10 +184,10 @@ func PostProjectDetail(c *gin.Context) {
     // Insert into project_list
     var projectId int
     err = db.QueryRow(`
-        INSERT INTO project_list (project_name, project_base_picture, project_description)
-        VALUES ($1, $2, $3) RETURNING id
-    `, projectPayload.ProjectName, basePictureData, projectPayload.ProjectDescription).Scan(&projectId)
+    INSERT INTO project_list (project_name, project_base_picture, project_description, tech_stacks)
+    VALUES ($1, $2, $3, $4) RETURNING id`, projectPayload.ProjectName, basePictureData, projectPayload.ProjectDescription, pq.Array(projectPayload.TechStacks)).Scan(&projectId)
     if err != nil {
+        log.Printf("Database insert error: %v", err)
         c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to insert project"})
         return
     }
@@ -222,6 +227,7 @@ func GetProjectsDetail(c *gin.Context) {
             p.project_name,
             p.project_base_picture,
             p.project_description,
+            p.tech_stacks,
             json_agg(
                 json_build_object(
                     'project_features_name', d.project_features_name,
@@ -249,9 +255,11 @@ func GetProjectsDetail(c *gin.Context) {
     for rows.Next() {
         var project ProjectList
         var detailed json.RawMessage
-        err := rows.Scan(&project.ProjectName, &project.ProjectBasePicture, &project.ProjectDescription, &detailed)
+        err := rows.Scan(&project.ProjectName, &project.ProjectBasePicture, &project.ProjectDescription, pq.Array(&project.TechStacks), &detailed)
         if err != nil {
-            isError = true
+            log.Println("JSON unmarshal error:", err)
+            c.JSON(http.StatusInternalServerError, gin.H{"error": "JSON unmarshal error"})
+            return
         }
         json.Unmarshal(detailed, &project.ProjectDetailed)
         projects = append(projects, project)
