@@ -95,7 +95,7 @@ func main() {
 
 func GetWorkProjects(c *gin.Context) {
     var workprojects []WorkProject
-    result := DB.Find(&workprojects)
+    result := DB.Order("id asc").Find(&workprojects)
 	response := gin.H{
 		"data": workprojects,
 		"isError": result.Error != nil,
@@ -251,7 +251,7 @@ func GetProjectsDetail(c *gin.Context) {
             project_list p
         LEFT JOIN
             project_detail d ON p.id = d.parent_id
-        GROUP BY
+        ORDER BY
             p.id;
     `)
     if err != nil {
