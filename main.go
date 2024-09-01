@@ -23,6 +23,13 @@ type WorkProject struct {
     ProjectDescription string `json:"project_description"`
 }
 
+type ProjectDetailPayloadChild struct {
+    ProjectParentId         string `json:"project_parent_id"`
+    ProjectFeaturesName       string `json:"project_features_name"`
+    ProjectFeaturesPicture    string `json:"project_features_picture"`
+    ProjectFeaturesDescription string `json:"project_features_description"`
+}
+
 type ProjectDetailPayload struct {
     ProjectFeaturesName       string `json:"project_features_name"`
     ProjectFeaturesPicture    string `json:"project_features_picture"`
@@ -83,9 +90,10 @@ func main() {
 	r.Use(cors.New(corsConfig))
 
 	r.GET("/workprojects", GetWorkProjects)
-    r.GET("/workprojects/detail/", GetProjectsDetail)
+    r.GET("/workprojects/detail/:id", GetProjectsDetail)
 	r.POST("/workprojects", CreateWorkProject)
     r.POST("/workprojects/detail/post", PostProjectDetail)
+    r.POST("/workprojects/detail/postchild", PostProjectDetailChild)
      r.POST("/upload", func(c *gin.Context) {
         handleFileUpload(c, DB)
     })
@@ -184,8 +192,6 @@ func PostProjectDetail(c *gin.Context) {
         return
     }
 
-    log.Println(pq.Array(projectPayload.TechStacks))
-
     // Decode Base64 image for project_base_picture
     basePictureData, err := base64.StdEncoding.DecodeString(projectPayload.ProjectBasePicture)
     if err != nil {
@@ -226,7 +232,44 @@ func PostProjectDetail(c *gin.Context) {
     c.JSON(http.StatusOK, gin.H{"message": "Project created successfully"})
 }
 
+func PostProjectDetailChild(c *gin.Context) {
+    db, err := sql.Open("postgres", dbconnection)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Database connection error"})
+        return
+    }
+    defer db.Close()
+
+    var projectPayload ProjectDetailPayloadChild
+    if err := c.BindJSON(&projectPayload); err != nil {
+        log.Println(projectPayload)
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON payload"})
+        return
+    }
+
+    // Decode Base64 image for project_base_picture
+    basePictureData, err := base64.StdEncoding.DecodeString(projectPayload.ProjectFeaturesPicture)
+    if err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Base64 for project_base_picture"})
+        return
+    }
+
+    // Insert into project_list
+    _, err = db.Exec(`
+            INSERT INTO project_detail (parent_id, project_features_name, project_features_picture, project_features_description)
+            VALUES ($1, $2, $3, $4)
+        `, projectPayload.ProjectParentId, projectPayload.ProjectFeaturesName, basePictureData, projectPayload.ProjectFeaturesDescription)
+    if err != nil {
+        log.Printf("Database insert error: %v", err)
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to insert project"})
+        return
+    }
+
+    c.JSON(http.StatusOK, gin.H{"message": "Project created successfully"})
+}
+
 func GetProjectsDetail(c *gin.Context) {
+    projectId := c.Param("id")
     db, err := sql.Open("postgres", dbconnection)
     if err != nil {
         c.JSON(500, gin.H{"error": "Database connection error"})
@@ -251,21 +294,24 @@ func GetProjectsDetail(c *gin.Context) {
             project_list p
         LEFT JOIN
             project_detail d ON p.id = d.parent_id
+        WHERE
+            p.id = $1
+        GROUP BY
+            p.id, p.project_name, p.project_base_picture, p.project_description, p.tech_stacks
         ORDER BY
             p.id;
-    `)
+    `, projectId)
     if err != nil {
+        log.Println(err)
         c.JSON(500, gin.H{"error": "Query execution error"})
         return
     }
     defer rows.Close()
 
-    var projects []ProjectList
-
+    var project ProjectList
     var isError bool = false
 
-    for rows.Next() {
-        var project ProjectList
+    if rows.Next() {
         var detailed json.RawMessage
         err := rows.Scan(&project.ProjectName, &project.ProjectBasePicture, &project.ProjectDescription, pq.Array(&project.TechStacks), &detailed)
         if err != nil {
@@ -273,19 +319,22 @@ func GetProjectsDetail(c *gin.Context) {
             c.JSON(http.StatusInternalServerError, gin.H{"error": "JSON unmarshal error"})
             return
         }
-        json.Unmarshal(detailed, &project.ProjectDetailed)
-        projects = append(projects, project)
+        err = json.Unmarshal(detailed, &project.ProjectDetailed)
+        if err != nil {
+            log.Println("JSON unmarshal error:", err)
+            c.JSON(http.StatusInternalServerError, gin.H{"error": "JSON unmarshal error"})
+            return
+        }
+    } else {
+        isError = true
+        c.JSON(http.StatusNotFound, gin.H{"error": "Project not found"})
+        return
     }
 
     response := gin.H{
-		"data": projects,
-		"isError": isError,
-	}
-
-	if isError {
-		c.JSON(http.StatusInternalServerError, response)
-		return
-	}
+        "data":    project,
+        "isError": isError,
+    }
 
     c.JSON(http.StatusOK, response)
 }

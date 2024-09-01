@@ -1,0 +1,20 @@
+{
+  "project_name": "Bspace 2.0",
+  "tech_stacks": [
+    "Vue",
+    "VUEX",
+    "Javascript",
+    "Scss",
+    "Element-Plus",
+    "Bootstrap"
+  ],
+  "project_base_picture": "",
+  "project_description": "",
+  "project_detailed": [
+    {
+      "project_features_name": "Requisition",
+      "project_features_picture": "",
+      "project_features_description": " Pricelist is recent project that I have been developing to this day. Pricelist created for giving price tag or value for goods that provide by BUMA. The goods must be specified with aim of SITES that need it will able to use it properly."
+    }
+  ]
+}
