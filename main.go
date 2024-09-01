@@ -36,6 +36,11 @@ type ProjectDetailPayload struct {
     ProjectFeaturesDescription string `json:"project_features_description"`
 }
 
+type ProjectDetailPayloadPictureUpdate struct {
+    ProjectId       string `json:"project_id"`
+    ProjectFeaturesPicture    string `json:"project_features_picture"`
+}
+
 type ProjectPayload struct {
     ProjectName        string               `json:"project_name"`
     ProjectBasePicture string               `json:"project_base_picture"`
@@ -93,6 +98,8 @@ func main() {
     r.GET("/workprojects/detail/:id", GetProjectsDetail)
 	r.POST("/workprojects", CreateWorkProject)
     r.POST("/workprojects/detail/post", PostProjectDetail)
+    r.POST("/workprojects/detail/updatepicture", UpdatePicture)
+    r.POST("/workprojects/detail/updatepicture/child", UpdatePictureChild)
     r.POST("/workprojects/detail/postchild", PostProjectDetailChild)
      r.POST("/upload", func(c *gin.Context) {
         handleFileUpload(c, DB)
@@ -192,14 +199,12 @@ func PostProjectDetail(c *gin.Context) {
         return
     }
 
-    // Decode Base64 image for project_base_picture
     basePictureData, err := base64.StdEncoding.DecodeString(projectPayload.ProjectBasePicture)
     if err != nil {
         c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Base64 for project_base_picture"})
         return
     }
 
-    // Insert into project_list
     var projectId int
     err = db.QueryRow(`
     INSERT INTO project_list (project_name, project_base_picture, project_description, tech_stacks)
@@ -210,9 +215,7 @@ func PostProjectDetail(c *gin.Context) {
         return
     }
 
-    // Insert project_detailed data
     for _, detail := range projectPayload.ProjectDetailed {
-        // Decode Base64 picture
         pictureData, err := base64.StdEncoding.DecodeString(detail.ProjectFeaturesPicture)
         if err != nil {
             c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Base64 for project_features_picture"})
@@ -247,14 +250,12 @@ func PostProjectDetailChild(c *gin.Context) {
         return
     }
 
-    // Decode Base64 image for project_base_picture
     basePictureData, err := base64.StdEncoding.DecodeString(projectPayload.ProjectFeaturesPicture)
     if err != nil {
         c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Base64 for project_base_picture"})
         return
     }
 
-    // Insert into project_list
     _, err = db.Exec(`
             INSERT INTO project_detail (parent_id, project_features_name, project_features_picture, project_features_description)
             VALUES ($1, $2, $3, $4)
@@ -267,6 +268,77 @@ func PostProjectDetailChild(c *gin.Context) {
 
     c.JSON(http.StatusOK, gin.H{"message": "Project created successfully"})
 }
+
+func UpdatePicture(c *gin.Context) {
+    db, err := sql.Open("postgres", dbconnection)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Database connection error"})
+        return
+    }
+    defer db.Close()
+
+    var projectPayload ProjectDetailPayloadPictureUpdate
+    if err := c.BindJSON(&projectPayload); err != nil {
+        log.Println(projectPayload)
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON payload"})
+        return
+    }
+
+    basePictureData, err := base64.StdEncoding.DecodeString(projectPayload.ProjectFeaturesPicture)
+    if err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Base64 for project_base_picture"})
+        return
+    }
+
+    _, err = db.Exec(`
+            UPDATE project_list
+            SET project_base_picture = $2
+            WHERE id = $1
+        `, projectPayload.ProjectId, basePictureData)
+    if err != nil {
+        log.Printf("Database update error: %v", err)
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to insert project"})
+        return
+    }
+
+    c.JSON(http.StatusOK, gin.H{"message": "Project created successfully"})
+}
+
+func UpdatePictureChild(c *gin.Context) {
+    db, err := sql.Open("postgres", dbconnection)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Database connection error"})
+        return
+    }
+    defer db.Close()
+
+    var projectPayload ProjectDetailPayloadPictureUpdate
+    if err := c.BindJSON(&projectPayload); err != nil {
+        log.Println(projectPayload)
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON payload"})
+        return
+    }
+
+    basePictureData, err := base64.StdEncoding.DecodeString(projectPayload.ProjectFeaturesPicture)
+    if err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Base64 for project_base_picture"})
+        return
+    }
+
+    _, err = db.Exec(`
+            UPDATE project_detail
+            SET project_features_picture = $2
+            WHERE id = $1
+        `, projectPayload.ProjectId, basePictureData)
+    if err != nil {
+        log.Printf("Database update error: %v", err)
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to insert project"})
+        return
+    }
+
+    c.JSON(http.StatusOK, gin.H{"message": "Project created successfully"})
+}
+
 
 func GetProjectsDetail(c *gin.Context) {
     projectId := c.Param("id")
